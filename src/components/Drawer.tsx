@@ -4,6 +4,7 @@ import { ChevronLeft } from 'lucide-react';
 import { MenuList } from './MenuList';
 import { type MenuItem as MenuItemType } from '../types';
 import { findMenuById } from '../lib/util';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 
 type DrawerProps = {
   isOpen: boolean;
@@ -71,6 +72,14 @@ export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
     ? 'fixed top-5 bottom-5'
     : 'fixed bottom-5';
 
+  const isDesktop = useMediaQuery('(min-width: 768px)');
+
+  const drawerVariants = {
+    initial: isDesktop ? { x: '-100%' } : { y: '100%' },
+    animate: isDesktop ? { x: '0%' } : { y: '1000%' },
+    exit: isDesktop ? { x: '-100%' } : { y: '100%' },
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -86,6 +95,7 @@ export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
           {/* Drawer Panel */}
           <motion.div
             initial={{ y: '100%' }}
+            variants={drawerVariants}
             animate={{ y: '0%' }}
             exit={{ y: '100%' }}
             drag='y'
@@ -108,7 +118,7 @@ export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
             }}
           >
             <div className='p-4 flex items-center justify-between'>
-              {!isRoot ? (
+              {!isRoot && (
                 <button
                   onClick={navigateBack}
                   className='flex gap-4 p-2 -ml-2 hover:bg-gray-100 rounded-full'
@@ -116,8 +126,6 @@ export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
                   <ChevronLeft className='w-6 h-6' />
                   <p>Back</p>
                 </button>
-              ) : (
-                <div></div>
               )}
             </div>
             <motion.div
