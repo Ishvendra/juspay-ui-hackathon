@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeft } from 'lucide-react';
 import { MenuList } from './MenuList';
@@ -11,9 +11,21 @@ type DrawerProps = {
   data: MenuItemType[];
 };
 
+const ITEM_HEIGHT = 64;
+const HEADER_HEIGHT = 56;
+const MARGIN = 40;
+
 export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
   const [history, setHistory] = useState<string[]>(['root']);
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
+  const [windowHeight, setWindowHeight] = useState(0);
+
+  useEffect(() => {
+    const updateHeight = () => setWindowHeight(window.innerHeight);
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    return () => window.removeEventListener('resize', updateHeight);
+  }, []);
 
   const activeMenuId = history[history.length - 1];
   const isRoot = activeMenuId === 'root';
@@ -51,7 +63,14 @@ export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
     setDirection('backward');
     setHistory((prev) => prev.slice(0, -1));
   }, []);
-  const contentHeight = activeMenu.items.length * 64 + 80;
+
+  const contentHeight = activeMenu.items.length * ITEM_HEIGHT + HEADER_HEIGHT;
+  const availableHeight = windowHeight - MARGIN;
+  const exceedsHeight = contentHeight > availableHeight;
+  const positionClasses = exceedsHeight
+    ? 'fixed top-5 bottom-5'
+    : 'fixed bottom-5';
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -72,13 +91,21 @@ export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
             drag='y'
             dragConstraints={{ top: 0, bottom: 500 }}
             dragElastic={{ top: 0, bottom: 0.5 }}
-            onDragEnd={(event, info) => {
+            onDragEnd={(_, info) => {
               if (info.offset.y > 150) {
                 onClose();
               }
             }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className='fixed bottom-5 top-auto left-0 right-0 bg-white rounded-2xl shadow-2xl z-50 m-5 max-h-[calc(100vh-40px)] max-w-[calc(100vw-40px)] overflow-auto'
+            className={`${positionClasses} left-5 right-5 bg-white rounded-2xl shadow-2xl z-50 ${
+              exceedsHeight ? 'overflow-auto' : 'overflow-hidden'
+            }`}
+            style={{
+              height: exceedsHeight ? 'auto' : `${contentHeight}px`,
+              maxHeight: exceedsHeight
+                ? `calc(100vh - ${MARGIN}px)`
+                : undefined,
+            }}
           >
             <div className='p-4 flex items-center justify-between'>
               {!isRoot ? (
