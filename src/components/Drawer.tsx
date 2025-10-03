@@ -73,12 +73,17 @@ export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
     : 'fixed bottom-5';
 
   const isDesktop = useMediaQuery('(min-width: 768px)');
-
-  const drawerVariants = {
-    initial: isDesktop ? { x: '-100%' } : { y: '100%' },
-    animate: isDesktop ? { x: '0%' } : { y: '1000%' },
-    exit: isDesktop ? { x: '-100%' } : { y: '100%' },
-  };
+  const drawerVariants = isDesktop
+    ? {
+        initial: { x: '-100%' },
+        animate: { x: 0 },
+        exit: { x: '-100%' },
+      }
+    : {
+        initial: { y: '100%' },
+        animate: { y: 0 },
+        exit: { y: '100%' },
+      };
 
   return (
     <AnimatePresence>
@@ -94,15 +99,20 @@ export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
           />
           {/* Drawer Panel */}
           <motion.div
-            initial={{ y: '100%' }}
             variants={drawerVariants}
-            animate={{ y: '0%' }}
-            exit={{ y: '100%' }}
-            drag='y'
-            dragConstraints={{ top: 0, bottom: 500 }}
+            initial='initial'
+            animate='animate'
+            exit='exit'
+            drag={isDesktop ? 'x' : 'y'}
+            dragConstraints={
+              isDesktop ? { left: 0, right: 300 } : { top: 0, bottom: 500 }
+            }
             dragElastic={{ top: 0, bottom: 0.5 }}
             onDragEnd={(_, info) => {
-              if (info.offset.y > 150) {
+              if (!isDesktop && info.offset.y > 150) {
+                onClose();
+              }
+              if (isDesktop && info.offset.x < -150) {
                 onClose();
               }
             }}
