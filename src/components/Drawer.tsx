@@ -1,10 +1,15 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import {
+  AnimatePresence,
+  motion,
+  useMotionValue,
+  useTransform,
+} from 'framer-motion';
 import { ChevronLeft } from 'lucide-react';
 import { MenuList } from './MenuList';
 import { type MenuItem as MenuItemType } from '../types';
-import { findMenuById } from '../lib/util';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import clsx from 'clsx';
 
 type DrawerProps = {
   isOpen: boolean;
@@ -12,15 +17,23 @@ type DrawerProps = {
   data: MenuItemType[];
 };
 
-const ITEM_HEIGHT = 64;
-const HEADER_HEIGHT = 56;
+const ITEM_HEIGHT = 76;
+const HEADER_HEIGHT = 72;
 const MARGIN = 40;
 
 export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
+  const isDesktop = useMediaQuery('(min-width: 768px)');
   const [history, setHistory] = useState<string[]>(['root']);
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
   const [windowHeight, setWindowHeight] = useState(0);
 
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+
+  const desktopOpacity = useTransform(x, [-200, 0], [0, 1]);
+  const mobileOpacity = useTransform(y, [0, 300], [1, 0]);
+
+  const opacity = isDesktop ? desktopOpacity : mobileOpacity;
   useEffect(() => {
     const updateHeight = () => setWindowHeight(window.innerHeight);
     updateHeight();
@@ -28,30 +41,45 @@ export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
     return () => window.removeEventListener('resize', updateHeight);
   }, []);
 
+  useEffect(() => {
+    if (isOpen) {
+      x.set(0);
+      y.set(0);
+    }
+  }, [isOpen, x, y]);
+
   const activeMenuId = history[history.length - 1];
   const isRoot = activeMenuId === 'root';
 
+  const menuMap = useMemo(() => {
+    const map = new Map();
+
+    function traverse(items: MenuItemType[], parentId: string | null) {
+      items.forEach((item) => {
+        map.set(item.id, { ...item, parentId });
+        if (item.children) {
+          if (item.id) {
+            traverse(item.children, item.id);
+          }
+        }
+      });
+    }
+
+    traverse(data, null);
+    return map;
+  }, [data]);
+
   const activeMenu = useMemo(() => {
     if (isRoot) return { title: 'Menu', items: data };
-    const items = findMenuById(data, activeMenuId);
 
-    const findParentTitle = (
-      menus: MenuItemType[],
-      id: string
-    ): string | undefined => {
-      for (const menu of menus) {
-        if (menu.children?.some((child) => child.id === id)) return menu.title;
-        if (menu.children) {
-          const found = findParentTitle(menu.children, id);
-          if (found) return found;
-        }
-      }
-    };
+    const currentItem = menuMap.get(activeMenuId);
+    const parentItem = currentItem ? menuMap.get(currentItem.parentId) : null;
+
     return {
-      title: findParentTitle(data, activeMenuId) || 'Menu',
-      items: items || [],
+      title: parentItem?.title || 'Menu',
+      items: currentItem?.children || [],
     };
-  }, [activeMenuId, data, isRoot]);
+  }, [activeMenuId, data, isRoot, menuMap]);
 
   const navigateTo = useCallback((item: MenuItemType) => {
     if (item.children && item.children.length > 0) {
@@ -65,25 +93,36 @@ export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
     setHistory((prev) => prev.slice(0, -1));
   }, []);
 
-  const contentHeight = activeMenu.items.length * ITEM_HEIGHT + HEADER_HEIGHT;
+  const contentHeight =
+    activeMenu.items.length * ITEM_HEIGHT + (isRoot ? 0 : HEADER_HEIGHT);
   const availableHeight = windowHeight - MARGIN;
-  const exceedsHeight = contentHeight > availableHeight;
-  const positionClasses = exceedsHeight
-    ? 'fixed top-5 bottom-5'
-    : 'fixed bottom-5';
 
-  const isDesktop = useMediaQuery('(min-width: 768px)');
-  const drawerVariants = isDesktop
-    ? {
-        initial: { x: '-100%' },
-        animate: { x: 0 },
-        exit: { x: '-100%' },
-      }
-    : {
-        initial: { y: '100%' },
-        animate: { y: 0 },
-        exit: { y: '100%' },
-      };
+  const drawerVariants = useMemo(
+    () =>
+      isDesktop
+        ? {
+            initial: {
+              x: '-100%',
+              width: 300,
+
+              height: '95%',
+            },
+            animate: {
+              x: 0,
+            },
+
+            exit: { x: '-100%' },
+          }
+        : {
+            initial: { y: '100%' },
+            animate: {
+              y: 0,
+              height: contentHeight,
+            },
+            exit: { y: '100%' },
+          },
+    [isDesktop, contentHeight]
+  );
 
   return (
     <AnimatePresence>
@@ -94,6 +133,7 @@ export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            style={{ opacity }}
             onClick={onClose}
             className='fixed inset-0 bg-black/50 z-40'
           />
@@ -103,6 +143,7 @@ export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
             initial='initial'
             animate='animate'
             exit='exit'
+            layout
             drag={isDesktop ? 'x' : 'y'}
             dragConstraints={
               isDesktop ? { left: 0, right: 300 } : { top: 0, bottom: 500 }
@@ -116,19 +157,27 @@ export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
                 onClose();
               }
             }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className={`${positionClasses} left-5 right-5 bg-white rounded-2xl shadow-2xl z-50 ${
-              exceedsHeight ? 'overflow-auto' : 'overflow-hidden'
-            }`}
+            onUpdate={(latest) => {
+              if (!isDesktop && typeof latest.y === 'number') {
+                y.set(latest.y);
+              } else if (isDesktop && typeof latest.x === 'number') {
+                x.set(latest.x);
+              }
+            }}
+            transition={{
+              type: 'spring',
+              stiffness: 300,
+              damping: 30,
+            }}
+            className={clsx(
+              'fixed bottom-5 left-5 right-5 bg-white rounded-2xl shadow-2xl z-50 overflow-y-auto'
+            )}
             style={{
-              height: exceedsHeight ? 'auto' : `${contentHeight}px`,
-              maxHeight: exceedsHeight
-                ? `calc(100vh - ${MARGIN}px)`
-                : undefined,
+              height: availableHeight,
             }}
           >
-            <div className='p-4 flex items-center justify-between'>
-              {!isRoot && (
+            {!isRoot && (
+              <div className='p-4 flex items-center justify-between'>
                 <button
                   onClick={navigateBack}
                   className='flex gap-4 p-2 -ml-2 hover:bg-gray-100 rounded-full'
@@ -136,26 +185,15 @@ export const Drawer = ({ isOpen, onClose, data }: DrawerProps) => {
                   <ChevronLeft className='w-6 h-6' />
                   <p>Back</p>
                 </button>
-              )}
-            </div>
-            <motion.div
-              className='relative'
-              layout
-              transition={{
-                y: { type: 'spring', stiffness: 300, damping: 30 },
-                height: { type: 'spring', stiffness: 400, damping: 40 },
-              }}
-              animate={{
-                y: '0%',
-                height: contentHeight,
-              }}
-            >
+              </div>
+            )}
+            <div className='relative'>
               <MenuList
                 items={activeMenu.items}
                 onItemClick={navigateTo}
                 direction={direction}
               />
-            </motion.div>
+            </div>
           </motion.div>
         </>
       )}
